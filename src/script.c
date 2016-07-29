@@ -45,7 +45,7 @@ static const struct luaL_reg threadlib[] = {
     { NULL,         NULL                   }
 };
 
-lua_State *script_create(char *file, char *url, char **headers) {
+lua_State *script_create(__int64_t threads, char *file, char *url, char **headers) {
     lua_State *L = luaL_newstate();
     luaL_openlibs(L);
     (void) luaL_dostring(L, "wrk = require \"wrk\"");
@@ -69,6 +69,7 @@ lua_State *script_create(char *file, char *url, char **headers) {
         { "lookup",  LUA_TFUNCTION, script_wrk_lookup  },
         { "connect", LUA_TFUNCTION, script_wrk_connect },
         { "path",    LUA_TSTRING,   path               },
+		{ "parallel_worker",  LUA_TNUMBER ,	   &threads },
         { NULL,      0,             NULL               },
     };
 

@@ -1,4 +1,4 @@
-CFLAGS  += -std=c99 -Wall -O2 -D_REENTRANT
+CFLAGS  += -std=c99 -Wall -g -O0 -D_REENTRANT
 LIBS    := -lpthread -lm -lssl -lcrypto
 
 TARGET  := $(shell uname -s | tr '[A-Z]' '[a-z]' 2>/dev/null || echo unknown)
@@ -106,3 +106,7 @@ endif
 vpath %.c   src
 vpath %.h   src
 vpath %.lua scripts
+
+TARGETPATH := ./wrk
+TARGETTYPE := APP
+TARGETNAME := wrk
