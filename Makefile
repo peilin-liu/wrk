@@ -1,5 +1,11 @@
-CFLAGS  += -std=c99 -Wall -g -O0 -D_REENTRANT
+CFLAGS  += -std=c99 -Wall -D_REENTRANT
 LIBS    := -lpthread -lm -lssl -lcrypto
+
+ifeq ($(CONFIG),Debug)
+CFLAGS += -ggdb -o0 
+else
+CFLAGS += -ggdb -o2
+endif
 
 TARGET  := $(shell uname -s | tr '[A-Z]' '[a-z]' 2>/dev/null || echo unknown)
 
