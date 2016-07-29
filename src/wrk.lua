@@ -7,6 +7,7 @@ local wrk = {
    headers = {},
    body    = nil,
    thread  = nil,
+   parallel_worker = nil,
 }
 
 function wrk.resolve(host, service)

@@ -92,7 +92,7 @@ int main(int argc, char **argv) {
     statistics.requests = stats_alloc(MAX_THREAD_RATE_S);
     thread *threads     = zcalloc(cfg.threads * sizeof(thread));
 
-    lua_State *L = script_create(cfg.script, url, headers);
+    lua_State *L = script_create(cfg.threads, cfg.script, url, headers);
     if (!script_resolve(L, host, service)) {
         char *msg = strerror(errno);
         fprintf(stderr, "unable to connect to %s:%s %s\n", host, service, msg);
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
         t->loop        = aeCreateEventLoop(10 + cfg.connections * 3);
         t->connections = cfg.connections / cfg.threads;
 
-        t->L = script_create(cfg.script, url, headers);
+        t->L = script_create(cfg.threads, cfg.script, url, headers);
         script_init(L, t, argc - optind, &argv[optind]);
 
         if (i == 0) {

@@ -108,3 +108,7 @@ $(ODIR)/lib/libssl.a: $(ODIR)/$(OPENSSL)
 vpath %.c   src
 vpath %.h   src
 vpath %.lua scripts
+
+TARGETPATH := ./wrk
+TARGETTYPE := APP
+TARGETNAME := wrk
