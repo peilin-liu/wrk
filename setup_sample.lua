@@ -4,10 +4,12 @@
 local counter = 1
 local threads = {}
 
-function setup(thread)
+function setup(thread, cs)
    thread:set("id", counter)
    table.insert(threads, thread)
    counter = counter + 1
+   local msg = "setup thread %d"
+   print(msg:format(id))
 end
 
 function init(args)
