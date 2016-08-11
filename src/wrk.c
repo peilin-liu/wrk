@@ -206,7 +206,7 @@ void *thread_main(void *arg) {
     size_t length = 0;
 
     if (!cfg.dynamic) {
-        script_request(thread->L, &request, &length);
+        script_request(thread->L, &request, &length, 0);
     }
 
     thread->cs = zcalloc(thread->connections * sizeof(connection));
@@ -218,6 +218,7 @@ void *thread_main(void *arg) {
         c->request = request;
         c->length  = length;
         c->delayed = cfg.delay;
+		c->pos_in_connections = i;
         connect_socket(thread, c);
     }
 
@@ -394,7 +395,7 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
 
     if (!c->written) {
         if (cfg.dynamic) {
-            script_request(thread->L, &c->request, &c->length);
+            script_request(thread->L, &c->request, &c->length, c->pos_in_connections);
         }
         c->start   = time_us();
         c->pending = cfg.pipeline;
