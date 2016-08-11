@@ -129,7 +129,9 @@ void script_init(lua_State *L, thread *t, int argc, char **argv) {
     lua_getglobal(L, "wrk");
     lua_getfield(L, -1, "setup");
     script_push_thread(L, t);
-    lua_call(L, 1, 0);
+	lua_pushinteger(L, (lua_Integer)t->connections);
+
+	lua_call(L, 2, 0);
     lua_pop(L, 1);
 
     lua_getfield(t->L, -1, "init");
@@ -150,7 +152,7 @@ uint64_t script_delay(lua_State *L) {
     return delay;
 }
 
-void script_request(lua_State *L, char **buf, size_t *len) {
+void script_request(lua_State *L, char **buf, size_t *len, int key) {
     int pop = 1;
     lua_getglobal(L, "request");
     if (!lua_isfunction(L, -1)) {
@@ -158,7 +160,8 @@ void script_request(lua_State *L, char **buf, size_t *len) {
         lua_getfield(L, -1, "request");
         pop += 2;
     }
-    lua_call(L, 0, 1);
+	lua_pushinteger(L, (lua_Integer)key);
+    lua_call(L, 1, 1);
     const char *str = lua_tolstring(L, -1, len);
     *buf = realloc(*buf, *len);
     memcpy(*buf, str, *len);
@@ -274,7 +277,7 @@ size_t script_verify_request(lua_State *L) {
     char *request = NULL;
     size_t len, count = 0;
 
-    script_request(L, &request, &len);
+    script_request(L, &request, &len, 0);
     http_parser_init(&parser, HTTP_REQUEST);
     parser.data = &count;
 
