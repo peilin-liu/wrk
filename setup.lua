@@ -31,8 +31,8 @@ function setup(thread, cs)
    thread:set("request_count", 0);
    table.insert(threads, thread)
    counter = counter + 1
-   local msg = "setup id=%d, sc=%d, rc=%d\n"
-   print(msg:format(thread:get("id"), thread:get("connections"), thread:get("request_count")))
+   --local msg = "setup id=%d, sc=%d, rc=%d\n"
+   --print(msg:format(thread:get("id"), thread:get("connections"), thread:get("request_count")))
 end
 
 
@@ -40,8 +40,8 @@ function init(args)
    requests  = 0
    responses = 0
 
-   local msg = "thread %d / %d created"
-   print(msg:format(id, wrk.parallel_worker))
+   --local msg = "thread %d / %d created"
+   --print(msg:format(id, wrk.parallel_worker))
 end
 
 function getlcm(m , n)
@@ -59,27 +59,31 @@ end
 
 request = function(key)
 	local lcm = getlcm(wrk.parallel_worker, connections)
-    local localhot = hot - hot % lcm
-    local rand = math.random(localhot, max)
+    local localhot = 0
+    local rand = math.random(0, max/wrk.parallel_worker)
     local single_hot = 0
     if rand % 100 < 80 then
-        single_hot = math.floor(localhot/wrk.parallel_worker)
-		rand = single_hot*(id-1)
-		local single_pos = single_hot - single_hot%connections
-        rand = rand + single_pos + key
+        localhot = hot - hot % lcm
+        single_hot = localhot/wrk.parallel_worker
+		local single_pos = rand%single_hot - single_hot%connections
+        rand = single_hot*(id-1) + single_pos + key
 
         headers["Oct-expires-default"] = "864000"
     else
-        headers["Oct-expires-default"] = "100"
-        rand = rand + hot
+        localhot = (max-hot) - (max-hot) % lcm
+        single_hot = localhot/wrk.parallel_worker
+        local single_pos = rand%single_hot - single_hot%connections
+        rand = hot+ single_hot*(id-1) + single_pos + key
+
+        headers["Oct-expires-default"] = "864000"
     end
  
     num = num + 1
     -- rand = num
 
     path = "/" .. rand
-	local msg = "request spec %d/%d %-6d %-8d/%4d %8d/%4d created"
-	print(msg:format(id, wrk.parallel_worker, single_hot, rand, key,localhot, lcm))
+	--local msg = "request spec %d/%d %-6d %-8d/%4d %8d/%4d created\n"
+	--print(msg:format(id, wrk.parallel_worker, single_hot, rand, key,localhot, lcm))
     return wrk.format("GET", path, headers)
 end
 
