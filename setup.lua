@@ -8,14 +8,15 @@ local hot = 200 * 1000
 math.randomseed(os.time())
 
 wrk.scheme  = "http"
-wrk.host    = "192.168.3.137"
-wrk.port    = 8000
+wrk.host    = "127.0.0.1"
+wrk.port    = 8017
 wrk.method  = "GET"
 
 headers = {
     ["Host"] = "test.com",
-    ["Oct-Host"] = "127.0.0.1",
-    ["Oct-expires-default"] = "864000",
+    ["Oct-Host"] = "192.168.3.137",
+    ["Oct-expires-default"] = "5",
+    ["Oct-Upstream-Retry"] = "0,2,504 502",
 }
 
 num = 0
@@ -62,26 +63,26 @@ request = function(key)
     local localhot = 0
     local rand = math.random(0, max/wrk.parallel_worker)
     local single_hot = 0
-    if rand % 100 < 80 then
+    if rand % 100 < 100 then
         localhot = hot - hot % lcm
         single_hot = localhot/wrk.parallel_worker
 		local single_pos = rand%single_hot - single_hot%connections
         rand = single_hot*(id-1) + single_pos + key
 
-        headers["Oct-expires-default"] = "864000"
+        headers["Oct-expires-default"] = "5"
     else
         localhot = (max-hot) - (max-hot) % lcm
         single_hot = localhot/wrk.parallel_worker
         local single_pos = rand%single_hot - single_hot%connections
         rand = hot+ single_hot*(id-1) + single_pos + key
 
-        headers["Oct-expires-default"] = "864000"
+        headers["Oct-expires-default"] = "5"
     end
  
     num = num + 1
     -- rand = num
 
-    path = "/" .. rand
+    path = "/" .. '304file.html'
 	--local msg = "request spec %d/%d %-6d %-8d/%4d %8d/%4d created\n"
 	--print(msg:format(id, wrk.parallel_worker, single_hot, rand, key,localhot, lcm))
     return wrk.format("GET", path, headers)
