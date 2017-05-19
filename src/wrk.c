@@ -252,8 +252,8 @@ static int connect_socket(thread *thread, connection *c) {
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flags, sizeof(flags));
 	
 	struct timeval rtimeout;
-	rtimeout.tv_sec = 3; //秒
-	rtimeout.tv_usec = 0; //微妙
+	rtimeout.tv_sec = cfg.timeout/1000; //秒
+	rtimeout.tv_usec = cfg.timeout%1000 * 1000; //微妙
 	setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,(const char *)&rtimeout,sizeof(struct timeval));
 	//setsockopt(sock,SOL_SOCKET,SO_SNDTIMEO,(const char *)&rtimeout,sizeof(struct timeval));
 
@@ -519,6 +519,7 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
             case 'T':
                 if (scan_time(optarg, &cfg->timeout)) return -1;
                 cfg->timeout *= 1000;
+				printf("wrk set socket timeout to %ld ms\n", cfg->timeout);
                 break;
             case 'v':
                 printf("wrk %s [%s] ", VERSION, aeGetApiName());
