@@ -250,6 +250,12 @@ static int connect_socket(thread *thread, connection *c) {
 
     flags = 1;
     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flags, sizeof(flags));
+	
+	struct timeval rtimeout;
+	rtimeout.tv_sec = 3; //秒
+	rtimeout.tv_usec = 0; //微妙
+	setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,(const char *)&rtimeout,sizeof(struct timeval));
+	//setsockopt(sock,SOL_SOCKET,SO_SNDTIMEO,(const char *)&rtimeout,sizeof(struct timeval));
 
     flags = AE_READABLE | AE_WRITABLE;
     if (aeCreateFileEvent(loop, fd, flags, socket_connected, c) == AE_OK) {
