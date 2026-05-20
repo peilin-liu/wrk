@@ -45,7 +45,7 @@ static const struct luaL_Reg threadlib[] = {
     { NULL,         NULL                   }
 };
 
-lua_State *script_create(__int64_t threads, char *file, char *url, char **headers) {
+lua_State *script_create(uint64_t threads, char *file, char *url, char **headers) {
     lua_State *L = luaL_newstate();
     luaL_openlibs(L);
     (void) luaL_dostring(L, "wrk = require \"wrk\"");
