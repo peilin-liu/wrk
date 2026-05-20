@@ -185,9 +185,9 @@ function scenario_runner.empty_stat()
    }
 end
 
-function scenario_runner.empty_stats()
+function scenario_runner.empty_stats(config)
    local stats = {}
-   for _, scenario in ipairs(scenario_runner.scenarios) do
+   for _, scenario in ipairs(config or scenario_runner.scenarios) do
       stats[scenario.name] = scenario_runner.empty_stat()
    end
    return stats
@@ -217,22 +217,34 @@ function scenario_runner.validate()
    end
 end
 
-function scenario_runner.init(config)
+function scenario_runner.init(config, thread_id)
    local workers = tonumber(wrk.parallel_worker) or 1
    if workers < 1 then workers = 1 end
 
    scenario_runner.scenarios = config
    scenario_runner.by_name = {}
    scenario_runner.total_target_qps = 0
+   scenario_runner.inflight = {}
+   scenario_runner.reservations = {}
+   scenario_runner.latency = {
+      buckets = {},
+      total_cost = 0,
+      total_count = 0,
+      last_sec = nil,
+   }
    scenario_runner.validate()
 
    local start = now_ms()
-   for _, scenario in ipairs(scenario_runner.scenarios) do
+   local thread_phase = ((tonumber(thread_id) or 1) - 1) / workers
+   for i, scenario in ipairs(scenario_runner.scenarios) do
       scenario_runner.by_name[scenario.name] = scenario
       scenario_runner.total_target_qps = scenario_runner.total_target_qps + scenario.target_qps
       scenario.thread_target_qps = scenario.target_qps / workers
       scenario.interval_ms = 1000.0 / scenario.thread_target_qps
-      scenario.next_send_at = start
+
+      local scenario_phase = (i - 1) / #scenario_runner.scenarios
+      local phase = (thread_phase + scenario_phase) % 1
+      scenario.next_send_at = start + scenario.interval_ms * phase
    end
 
    scenario_runner.stats = scenario_runner.empty_stats()
@@ -250,9 +262,7 @@ function scenario_runner.reserve_next()
    end
 
    local slot_at = selected.next_send_at
-   if slot_at < now then slot_at = now end
-
-   selected.next_send_at = slot_at + selected.interval_ms
+   selected.next_send_at = selected.next_send_at + selected.interval_ms
 
    local delay_ms = slot_at - now
    if delay_ms < 0 then delay_ms = 0 end
@@ -394,7 +404,7 @@ function scenario_runner.merge_serialized_stats(dst, text)
 end
 
 function scenario_runner.aggregate_thread_stats()
-   local aggregate = scenario_runner.empty_stats()
+   local aggregate = scenario_runner.empty_stats(scenarios)
 
    if #scenario_runner.threads == 0 then
       scenario_runner.merge_serialized_stats(aggregate, scenario_runner.serialize_stats(scenario_runner.stats))
@@ -424,6 +434,14 @@ function scenario_runner.print_distribution(title, values, total, indent)
 end
 
 function scenario_runner.report(stats, summary)
+   if scenario_runner.total_target_qps == 0 then
+      scenario_runner.scenarios = scenarios
+      scenario_runner.stats = scenario_runner.empty_stats(scenarios)
+      for _, scenario in ipairs(scenario_runner.scenarios) do
+         scenario_runner.total_target_qps = scenario_runner.total_target_qps + scenario.target_qps
+      end
+   end
+
    local duration_s = summary and summary.duration and summary.duration / 1000000.0 or 0
    local total_requests = 0
    for _, stat in pairs(stats) do
@@ -435,7 +453,7 @@ function scenario_runner.report(stats, summary)
    print(string.format("total target_qps: %s", tostring(scenario_runner.total_target_qps)))
 
    for _, scenario in ipairs(scenario_runner.scenarios) do
-      local stat = stats[scenario.name]
+      local stat = stats[scenario.name] or scenario_runner.empty_stat()
       local request_pct = total_requests > 0 and stat.requests * 100.0 / total_requests or 0
       local actual_qps = duration_s > 0 and stat.requests / duration_s or 0
 
@@ -454,10 +472,17 @@ function scenario_runner.report(stats, summary)
    end
 end
 
-scenario_runner.init(scenarios)
+local setup_counter = 0
 
 setup = function(thread, connections)
+   setup_counter = setup_counter + 1
+   thread:set("id", setup_counter)
+   thread:set("connections", connections)
    scenario_runner.threads[#scenario_runner.threads + 1] = thread
+end
+
+init = function(args)
+   scenario_runner.init(scenarios, id)
 end
 
 delay = function()
