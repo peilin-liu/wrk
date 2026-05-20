@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 #include "script.h"
 #include "http_parser.h"
 #include "zmalloc.h"
@@ -21,6 +22,7 @@ static int script_thread_index(lua_State *);
 static int script_thread_newindex(lua_State *);
 static int script_wrk_lookup(lua_State *);
 static int script_wrk_connect(lua_State *);
+static int script_wrk_now(lua_State *);
 
 static void set_fields(lua_State *, int, const table_field *);
 static void set_field(lua_State *, int, char *, int);
@@ -68,6 +70,7 @@ lua_State *script_create(uint64_t threads, char *file, char *url, char **headers
     const table_field fields[] = {
         { "lookup",  LUA_TFUNCTION, script_wrk_lookup  },
         { "connect", LUA_TFUNCTION, script_wrk_connect },
+        { "now",     LUA_TFUNCTION, script_wrk_now     },
         { "path",    LUA_TSTRING,   path               },
 		{ "parallel_worker",  LUA_TNUMBER ,	   &threads },
         { NULL,      0,             NULL               },
@@ -475,6 +478,13 @@ static int script_wrk_connect(lua_State *L) {
         close(fd);
     }
     lua_pushboolean(L, connected);
+    return 1;
+}
+
+static int script_wrk_now(lua_State *L) {
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    lua_pushnumber(L, (lua_Number) t.tv_sec * 1000 + t.tv_usec / 1000.0);
     return 1;
 }
 
