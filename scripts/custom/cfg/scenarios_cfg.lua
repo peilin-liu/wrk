@@ -13,7 +13,11 @@ return {
       },
       expect_status = { 439 },
       body_classifier = function(body)
-         return body:find("limit") and "limited" or "other"
+         body = body or ""
+         if body:find("limit by header", 1, true) then return "limit_by_header" end
+         if body:find("limit by ip total", 1, true) then return "limit_by_ip_total" end
+         if body == "" then return "empty" end
+         return "other"
       end,
    },
    {
@@ -31,7 +35,11 @@ return {
       },
       expect_status = { 449 },
       body_classifier = function(body)
-         return body == '{"error": "limit by cookie", "code": 500}'
+         body = body or ""
+         if body:find("limit by cookie", 1, true) then return "limit_by_cookie" end
+         if body:find("limit by ip total", 1, true) then return "limit_by_ip_total" end
+         if body == "" then return "empty" end
+         return "other"
       end,
    },
    {
@@ -48,7 +56,11 @@ return {
       },
       expect_status = { 459 },
       body_classifier = function(body)
-         return body == '{"error": "limit by parameter", "code": 500}'
+         body = body or ""
+         if body:find("limit by parameter", 1, true) then return "limit_by_parameter" end
+         if body:find("limit by ip total", 1, true) then return "limit_by_ip_total" end
+         if body == "" then return "empty" end
+         return "other"
       end,
    },
    {
@@ -62,7 +74,11 @@ return {
       },
       expect_status = { 200 },
       body_classifier = function(body)
-         return body == '{"error": "limit by request total", "code": 500}'
+         body = body or ""
+         if body:find("limit by request total", 1, true) then return "limit_by_request_total" end
+         if body:find("limit by ip total", 1, true) then return "limit_by_ip_total" end
+         if body == "" then return "empty" end
+         return "other"
       end,
    },
    {
@@ -74,7 +90,10 @@ return {
       },
       expect_status = { 479 },
       body_classifier = function(body)
-         return body == '{"error": "limit by ip total", "code": 500}'
+         body = body or ""
+         if body:find("limit by ip total", 1, true) then return "limit_by_ip_total" end
+         if body == "" then return "empty" end
+         return "other"
       end,
    },
    {
@@ -89,7 +108,11 @@ return {
       },
       expect_status = { 489 },
       body_classifier = function(body)
-         return body == '{"error": "limit by ip and path 1", "code": 500}'
+         body = body or ""
+         if body:find("limit by ip and path", 1, true) then return "limit_by_ip_path" end
+         if body:find("limit by ip total", 1, true) then return "limit_by_ip_total" end
+         if body == "" then return "empty" end
+         return "other"
       end,
    },
 }

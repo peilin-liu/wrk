@@ -388,7 +388,7 @@ static void socket_writeable(aeEventLoop *loop, int fd, void *data, int mask) {
     thread *thread = c->thread;
 
     if (c->delayed) {
-        uint64_t delay = script_delay(thread->L);
+        uint64_t delay = script_delay(thread->L, c->pos_in_connections);
         aeDeleteFileEvent(loop, fd, AE_WRITABLE);
         aeCreateTimeEvent(loop, delay, delay_request, c, NULL);
         return;

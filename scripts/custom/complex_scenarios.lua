@@ -17,6 +17,7 @@ local scenario_runner = {
    stats = {},
    inflight = {},
    reservations = {},
+   reservations_by_key = {},
    threads = {},
    total_target_qps = 0,
    latency = {
@@ -226,6 +227,7 @@ function scenario_runner.init(config, thread_id)
    scenario_runner.total_target_qps = 0
    scenario_runner.inflight = {}
    scenario_runner.reservations = {}
+   scenario_runner.reservations_by_key = {}
    scenario_runner.latency = {
       buckets = {},
       total_cost = 0,
@@ -251,7 +253,7 @@ function scenario_runner.init(config, thread_id)
    scenario_results = ""
 end
 
-function scenario_runner.reserve_next()
+function scenario_runner.reserve_next(key)
    local now = now_ms()
    local selected = nil
 
@@ -267,21 +269,38 @@ function scenario_runner.reserve_next()
    local delay_ms = slot_at - now
    if delay_ms < 0 then delay_ms = 0 end
 
-   scenario_runner.reservations[#scenario_runner.reservations + 1] = {
+   local reservation = {
+      key = key,
       scenario = selected,
       ready_at = now + delay_ms,
+      active = true,
    }
+
+   scenario_runner.reservations[#scenario_runner.reservations + 1] = reservation
+
+   if key ~= nil then
+      scenario_runner.reservations_by_key[key] = reservation
+   end
 
    return math.floor(delay_ms + 0.5)
 end
 
-function scenario_runner.pop_reservation()
+function scenario_runner.pop_reservation(key)
    local now = now_ms()
    local best_index = nil
    local best_ready_at = nil
 
+   if key ~= nil then
+      local reservation = scenario_runner.reservations_by_key[key]
+      if reservation and reservation.active then
+         scenario_runner.reservations_by_key[key] = nil
+         reservation.active = false
+         return reservation.scenario
+      end
+   end
+
    for i, reservation in ipairs(scenario_runner.reservations) do
-      if reservation.ready_at <= now and (not best_ready_at or reservation.ready_at < best_ready_at) then
+      if reservation.active ~= false and reservation.ready_at <= now and (not best_ready_at or reservation.ready_at < best_ready_at) then
          best_index = i
          best_ready_at = reservation.ready_at
       end
@@ -289,12 +308,21 @@ function scenario_runner.pop_reservation()
 
    if not best_index then
       if #scenario_runner.reservations == 0 then
-         scenario_runner.reserve_next()
+         scenario_runner.reserve_next(key)
       end
       best_index = 1
+      while scenario_runner.reservations[best_index] and scenario_runner.reservations[best_index].active == false do
+         table.remove(scenario_runner.reservations, best_index)
+      end
    end
 
-   return table.remove(scenario_runner.reservations, best_index).scenario
+   local reservation = table.remove(scenario_runner.reservations, best_index)
+   if reservation.key ~= nil and scenario_runner.reservations_by_key[reservation.key] == reservation then
+      scenario_runner.reservations_by_key[reservation.key] = nil
+   end
+   reservation.active = false
+
+   return reservation.scenario
 end
 
 function scenario_runner.build_request(scenario)
@@ -485,12 +513,12 @@ init = function(args)
    scenario_runner.init(scenarios, id)
 end
 
-delay = function()
-   return scenario_runner.reserve_next()
+delay = function(key)
+   return scenario_runner.reserve_next(key)
 end
 
 request = function(key)
-   local scenario = scenario_runner.pop_reservation()
+   local scenario = scenario_runner.pop_reservation(key)
    local stat = scenario_runner.stats[scenario.name]
    local start_ms = now_ms()
    local queue = scenario_runner.inflight[key]
@@ -521,6 +549,12 @@ response = function(status, headers, body, key)
 end
 
 reset = function(key)
+   local reservation = scenario_runner.reservations_by_key[key]
+   if reservation then
+      reservation.active = false
+      scenario_runner.reservations_by_key[key] = nil
+   end
+
    scenario_runner.inflight[key] = nil
 end
 

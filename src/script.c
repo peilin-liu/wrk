@@ -147,9 +147,10 @@ void script_init(lua_State *L, thread *t, int argc, char **argv) {
     lua_pop(t->L, 1);
 }
 
-uint64_t script_delay(lua_State *L) {
+uint64_t script_delay(lua_State *L, int key) {
     lua_getglobal(L, "delay");
-    lua_call(L, 0, 1);
+    lua_pushinteger(L, (lua_Integer)key);
+    lua_call(L, 1, 1);
     uint64_t delay = lua_tonumber(L, -1);
     lua_pop(L, 1);
     return delay;
