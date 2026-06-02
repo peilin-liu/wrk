@@ -493,9 +493,15 @@ request = function(key)
    local scenario = scenario_runner.pop_reservation()
    local stat = scenario_runner.stats[scenario.name]
    local start_ms = now_ms()
+   local queue = scenario_runner.inflight[key]
+
+   if not queue then
+      queue = {}
+      scenario_runner.inflight[key] = queue
+   end
 
    stat.requests = stat.requests + 1
-   scenario_runner.inflight[#scenario_runner.inflight + 1] = {
+   queue[#queue + 1] = {
       scenario = scenario.name,
       start_ms = start_ms,
    }
@@ -504,13 +510,18 @@ request = function(key)
    return scenario_runner.build_request(scenario)
 end
 
-response = function(status, headers, body)
-   local item = table.remove(scenario_runner.inflight, 1)
+response = function(status, headers, body, key)
+   local queue = scenario_runner.inflight[key]
+   local item = queue and table.remove(queue, 1)
    if item then
       scenario_runner.record_latency(now_ms() - item.start_ms)
       scenario_runner.record_response(item.scenario, status, body)
       scenario_runner.publish_stats()
    end
+end
+
+reset = function(key)
+   scenario_runner.inflight[key] = nil
 end
 
 done = function(summary, latency, requests)
