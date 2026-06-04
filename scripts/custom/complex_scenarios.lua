@@ -16,8 +16,6 @@ local scenario_runner = {
    by_name = {},
    stats = {},
    inflight = {},
-   reservations = {},
-   reservations_by_key = {},
    threads = {},
    total_target_qps = 0,
    latency = {
@@ -179,6 +177,9 @@ function scenario_runner.empty_stat()
    return {
       requests = 0,
       responses = 0,
+      resets = 0,
+      overwrites = 0,
+      orphan_responses = 0,
       status = {},
       body = {},
       expected_status = {},
@@ -191,6 +192,7 @@ function scenario_runner.empty_stats(config)
    for _, scenario in ipairs(config or scenario_runner.scenarios) do
       stats[scenario.name] = scenario_runner.empty_stat()
    end
+   stats.__orphan__ = scenario_runner.empty_stat()
    return stats
 end
 
@@ -212,6 +214,12 @@ function scenario_runner.validate()
          error(string.format("duplicate scenario name '%s'", scenario.name))
       end
       names[scenario.name] = true
+      if scenario.enable == nil then
+         scenario.enable = true
+      end
+      if type(scenario.enable) ~= "boolean" then
+         error(string.format("scenario '%s' field 'enable' must be boolean", scenario.name))
+      end
       if type(scenario.target_qps) ~= "number" or scenario.target_qps <= 0 then
          error(string.format("scenario '%s' requires positive numeric target_qps", scenario.name))
       end
@@ -226,8 +234,6 @@ function scenario_runner.init(config, thread_id)
    scenario_runner.by_name = {}
    scenario_runner.total_target_qps = 0
    scenario_runner.inflight = {}
-   scenario_runner.reservations = {}
-   scenario_runner.reservations_by_key = {}
    scenario_runner.latency = {
       buckets = {},
       total_cost = 0,
@@ -235,6 +241,15 @@ function scenario_runner.init(config, thread_id)
       last_sec = nil,
    }
    scenario_runner.validate()
+   scenario_runner.scenarios = {}
+   for _, scenario in ipairs(config) do
+      if scenario.enable ~= false then
+         scenario_runner.scenarios[#scenario_runner.scenarios + 1] = scenario
+      end
+   end
+   if #scenario_runner.scenarios == 0 then
+      error("no enabled scenarios configured")
+   end
 
    local start = now_ms()
    local thread_phase = ((tonumber(thread_id) or 1) - 1) / workers
@@ -253,7 +268,7 @@ function scenario_runner.init(config, thread_id)
    scenario_results = ""
 end
 
-function scenario_runner.reserve_next(key)
+function scenario_runner.reserve_next()
    local now = now_ms()
    local selected = nil
 
@@ -263,66 +278,23 @@ function scenario_runner.reserve_next(key)
       end
    end
 
-   local slot_at = selected.next_send_at
-   selected.next_send_at = selected.next_send_at + selected.interval_ms
-
-   local delay_ms = slot_at - now
+   local delay_ms = selected.next_send_at - now
    if delay_ms < 0 then delay_ms = 0 end
-
-   local reservation = {
-      key = key,
-      scenario = selected,
-      ready_at = now + delay_ms,
-      active = true,
-   }
-
-   scenario_runner.reservations[#scenario_runner.reservations + 1] = reservation
-
-   if key ~= nil then
-      scenario_runner.reservations_by_key[key] = reservation
-   end
 
    return math.floor(delay_ms + 0.5)
 end
 
-function scenario_runner.pop_reservation(key)
-   local now = now_ms()
-   local best_index = nil
-   local best_ready_at = nil
+function scenario_runner.pick_scenario()
+   local selected = nil
 
-   if key ~= nil then
-      local reservation = scenario_runner.reservations_by_key[key]
-      if reservation and reservation.active then
-         scenario_runner.reservations_by_key[key] = nil
-         reservation.active = false
-         return reservation.scenario
+   for _, scenario in ipairs(scenario_runner.scenarios) do
+      if not selected or scenario.next_send_at < selected.next_send_at then
+         selected = scenario
       end
    end
 
-   for i, reservation in ipairs(scenario_runner.reservations) do
-      if reservation.active ~= false and reservation.ready_at <= now and (not best_ready_at or reservation.ready_at < best_ready_at) then
-         best_index = i
-         best_ready_at = reservation.ready_at
-      end
-   end
-
-   if not best_index then
-      if #scenario_runner.reservations == 0 then
-         scenario_runner.reserve_next(key)
-      end
-      best_index = 1
-      while scenario_runner.reservations[best_index] and scenario_runner.reservations[best_index].active == false do
-         table.remove(scenario_runner.reservations, best_index)
-      end
-   end
-
-   local reservation = table.remove(scenario_runner.reservations, best_index)
-   if reservation.key ~= nil and scenario_runner.reservations_by_key[reservation.key] == reservation then
-      scenario_runner.reservations_by_key[reservation.key] = nil
-   end
-   reservation.active = false
-
-   return reservation.scenario
+   selected.next_send_at = selected.next_send_at + selected.interval_ms
+   return selected
 end
 
 function scenario_runner.build_request(scenario)
@@ -379,6 +351,24 @@ function scenario_runner.record_response(scenario_name, status, body)
    end
 end
 
+function scenario_runner.record_reset(scenario_name)
+   local stat = scenario_runner.stats[scenario_name]
+   if not stat then return end
+   stat.resets = stat.resets + 1
+end
+
+function scenario_runner.record_overwrite(scenario_name)
+   local stat = scenario_runner.stats[scenario_name]
+   if not stat then return end
+   stat.overwrites = stat.overwrites + 1
+end
+
+function scenario_runner.record_orphan_response(scenario_name)
+   local stat = scenario_runner.stats[scenario_name]
+   if not stat then return end
+   stat.orphan_responses = stat.orphan_responses + 1
+end
+
 function scenario_runner.serialize_counts(lines, scenario_name, field, values)
    for key, value in pairs(values) do
       lines[#lines + 1] = table.concat({ scenario_name, field, tostring(key), tostring(value) }, "\t")
@@ -392,6 +382,9 @@ function scenario_runner.serialize_stats(stats)
       local stat = stats[scenario.name]
       lines[#lines + 1] = table.concat({ scenario.name, "requests", "_", tostring(stat.requests) }, "\t")
       lines[#lines + 1] = table.concat({ scenario.name, "responses", "_", tostring(stat.responses) }, "\t")
+      lines[#lines + 1] = table.concat({ scenario.name, "resets", "_", tostring(stat.resets) }, "\t")
+      lines[#lines + 1] = table.concat({ scenario.name, "overwrites", "_", tostring(stat.overwrites) }, "\t")
+      lines[#lines + 1] = table.concat({ scenario.name, "orphan_responses", "_", tostring(stat.orphan_responses) }, "\t")
       scenario_runner.serialize_counts(lines, scenario.name, "status", stat.status)
       scenario_runner.serialize_counts(lines, scenario.name, "body", stat.body)
       scenario_runner.serialize_counts(lines, scenario.name, "expected_status", stat.expected_status)
@@ -418,6 +411,12 @@ function scenario_runner.merge_serialized_stats(dst, text)
             stat.requests = stat.requests + value
          elseif field == "responses" then
             stat.responses = stat.responses + value
+         elseif field == "resets" then
+            stat.resets = stat.resets + value
+         elseif field == "overwrites" then
+            stat.overwrites = stat.overwrites + value
+         elseif field == "orphan_responses" then
+            stat.orphan_responses = stat.orphan_responses + value
          elseif field == "status" then
             count(stat.status, key, value)
          elseif field == "body" then
@@ -490,6 +489,9 @@ function scenario_runner.report(stats, summary)
       print(string.format("  actual_qps: %.2f", actual_qps))
       print(string.format("  requests: %d (actual ratio %.2f%%)", stat.requests, request_pct))
       print(string.format("  responses: %d", stat.responses))
+      print(string.format("  resets: %d", stat.resets or 0))
+      print(string.format("  overwrites: %d", stat.overwrites or 0))
+      print(string.format("  orphan_responses: %d", stat.orphan_responses or 0))
       scenario_runner.print_distribution("status", stat.status, stat.responses, "  ")
       scenario_runner.print_distribution("body", stat.body, stat.responses, "  ")
 
@@ -514,22 +516,21 @@ init = function(args)
 end
 
 delay = function(key)
-   return scenario_runner.reserve_next(key)
+   return scenario_runner.reserve_next()
 end
 
 request = function(key)
-   local scenario = scenario_runner.pop_reservation(key)
+   local scenario = scenario_runner.pick_scenario()
    local stat = scenario_runner.stats[scenario.name]
    local start_ms = now_ms()
-   local queue = scenario_runner.inflight[key]
+   local previous = scenario_runner.inflight[key]
 
-   if not queue then
-      queue = {}
-      scenario_runner.inflight[key] = queue
+   if previous then
+      scenario_runner.record_overwrite(previous.scenario)
    end
 
    stat.requests = stat.requests + 1
-   queue[#queue + 1] = {
+   scenario_runner.inflight[key] = {
       scenario = scenario.name,
       start_ms = start_ms,
    }
@@ -539,23 +540,24 @@ request = function(key)
 end
 
 response = function(status, headers, body, key)
-   local queue = scenario_runner.inflight[key]
-   local item = queue and table.remove(queue, 1)
+   local item = scenario_runner.inflight[key]
+   scenario_runner.inflight[key] = nil
    if item then
       scenario_runner.record_latency(now_ms() - item.start_ms)
       scenario_runner.record_response(item.scenario, status, body)
-      scenario_runner.publish_stats()
+   else
+      scenario_runner.record_orphan_response("__orphan__")
    end
+   scenario_runner.publish_stats()
 end
 
 reset = function(key)
-   local reservation = scenario_runner.reservations_by_key[key]
-   if reservation then
-      reservation.active = false
-      scenario_runner.reservations_by_key[key] = nil
-   end
-
+   local item = scenario_runner.inflight[key]
    scenario_runner.inflight[key] = nil
+   if item then
+      scenario_runner.record_reset(item.scenario)
+      scenario_runner.publish_stats()
+   end
 end
 
 done = function(summary, latency, requests)

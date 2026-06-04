@@ -1,6 +1,7 @@
 return {
    {
       name = "limited_by_header",
+      enable = true,
       target_qps = 13,
       method = "GET",
       path = "/add",
@@ -22,6 +23,7 @@ return {
    },
    {
       name = "limited_by_cookie",
+      enable = true,
       target_qps = 13,
       method = "GET",
       path = "/add",
@@ -32,6 +34,7 @@ return {
       cookies = {
          uid = "tester",
          token = "cast",
+         a = "a",
       },
       expect_status = { 449 },
       body_classifier = function(body)
@@ -44,6 +47,7 @@ return {
    },
    {
       name = "limited_by_parameter",
+      enable = true,
       target_qps = 13,
       method = "GET",
       path = "/add",
@@ -65,7 +69,8 @@ return {
    },
    {
       name = "limited_by_total",
-      target_qps = 10,
+      enable = true,
+      target_qps = 100,
       method = "GET",
       path = "/add",
       params = {
@@ -83,6 +88,7 @@ return {
    },
    {
       name = "limited_by_ip_total",
+      enable = true,
       target_qps = 35,
       method = "GET",
       path = "/favicon.ico",
@@ -98,6 +104,7 @@ return {
    },
    {
       name = "limited_by_ip_path",
+      enable = true,
       target_qps = 13,
       method = "GET",
       path = "/static/css/base.css",
@@ -111,6 +118,20 @@ return {
          body = body or ""
          if body:find("limit by ip and path", 1, true) then return "limit_by_ip_path" end
          if body:find("limit by ip total", 1, true) then return "limit_by_ip_total" end
+         if body == "" then return "empty" end
+         return "other"
+      end,
+   },
+   {
+      name = "limited_by_total ver",
+      enable = true,
+      target_qps = 3000,
+      method = "GET",
+      path = "/version",
+      expect_status = { 200 },
+      body_classifier = function(body)
+         body = body or ""
+         if body:find("limit by request total", 1, true) then return "limit_by_request_total" end
          if body == "" then return "empty" end
          return "other"
       end,
